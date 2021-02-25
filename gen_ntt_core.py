@@ -52,7 +52,7 @@ def gen_ntt_core(out_file, ntt_core_type='resource_efficient', io_width=28,
         for j in range(0, nodes_curr_level):
             internal_signals += f'  logic [{io_width}-1:0] sum_reg_l{i}_{j};\n'
             internal_signals += f'  logic [{io_width}-1:0] sum_wire_l{i}_{j};\n'
-        internal_signals += f'  logic data_valid_l{i};\n'
+        internal_signals += f'  logic data_valid_reg_l{i};\n'
         nodes_prev_level = nodes_curr_level
 
     # adder tree construct
@@ -66,13 +66,13 @@ def gen_ntt_core(out_file, ntt_core_type='resource_efficient', io_width=28,
         nodes_curr_level = nodes_prev_level // 2 + nodes_prev_level % 2
         for j in range(0, nodes_curr_level):
             if i == 0:
-                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (op_{j*2}_signed, op{j*2+1}_signed, sum_wire_l{i}_{j}, q, 0);\n'
+                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (op_{j*2}_signed, op_{j*2+1}_signed, sum_wire_l{i}_{j}, q, 1\'b0);\n'
             else:
-                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (sum_reg_l{i-1}_{j*2}, sum_reg_l{i-1}_{j*2+1}, sum_wire_l{i}_{j}, q, 0);\n'
+                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (sum_reg_l{i-1}_{j*2}, sum_reg_l{i-1}_{j*2+1}, sum_wire_l{i}_{j}, q, 1\'b0);\n'
             if i == adder_tree_levels - 1:
                 assert j == 0
                 adder_tree_construct += f'  assign out_data = sum_reg_l{i}_{j};\n'
-                adder_tree_construct += f'  assign out_data_valid = data_valid_l{i};\n'
+                adder_tree_construct += f'  assign out_data_valid = data_valid_reg_l{i};\n'
         nodes_prev_level = nodes_curr_level
 
     # adder tree operands updates
@@ -101,15 +101,16 @@ def gen_ntt_core(out_file, ntt_core_type='resource_efficient', io_width=28,
         for j in range(0, nodes_curr_level):
             always_block_dp += f'      sum_reg_l{i}_{j} <= sum_wire_l{i}_{j};\n'
         if i == 0:
-            always_block_dp += f'      data_valid_l{i} <= mult_data_valid;\n'
+            always_block_dp += f'      data_valid_reg_l{i} <= mult_data_valid;\n'
         else:
-            always_block_dp += f'      data_valid_l{i} <= data_valid_l{i-1};\n'
+            always_block_dp += f'      data_valid_reg_l{i} <= data_valid_reg_l{i-1};\n'
         nodes_prev_level = nodes_curr_level
 
     if ntt_core_type == 'resource_efficient':
         ntt_core_sv = f"""// This verilog file is generated automatically.
 // Resource efficient NTT core optimized for solinas primes.
 // Author: Yang Yang (yyang172@usc.edu)
+`timescale 1ns/1ps
 
 module modular_adder (
     x,
@@ -141,7 +142,7 @@ module modular_reduction (
     rst,
     mult_data_valid,
     mult_data,
-    out_data_valid
+    out_data_valid,
     out_data,
     q_id,
     q
@@ -151,11 +152,11 @@ module modular_reduction (
 
   input clk, rst;
 
-  input mult_data_valid,
-  input [2*{io_width}-1:0] mult_data,
+  input mult_data_valid;
+  input [2*{io_width}-1:0] mult_data;
 
-  output logic out_data_valid,
-  output [{io_width}-1:0] out_data,
+  output logic out_data_valid;
+  output [{io_width}-1:0] out_data;
 
   input [Q_ID_BITS-1:0] q_id;
   input [{io_width}-1:0] q;
@@ -168,11 +169,7 @@ module modular_reduction (
 
   // data path
   always_ff @ (posedge clk) begin
-    if (rst) begin
-      out_data_valid <= 0;
-    end else begin
-      {always_block_dp}
-    end
+    {always_block_dp}
   end
 endmodule
 
@@ -220,26 +217,28 @@ endmodule
 
 module ntt_core_tb;
 
+  localparam NUM_Q = {len(moduli_config)};
+  localparam Q_ID_BITS = $clog2(NUM_Q);
   localparam CLK_PERIOD = 10;
   logic clk, rst;
 
   logic mult_data_valid;
-  logic [{io_width}-1:0] mult_data;
+  logic [2*{io_width}-1:0] mult_data;
 
   logic out_data_valid;
   logic [{io_width}-1:0] out_data;
 
-  input [Q_ID_BITS-1:0] q_id;
-  input [{io_width}-1:0] q;
+  logic [Q_ID_BITS-1:0] q_id;
+  logic [{io_width}-1:0] q;
 
   // clock generation
   initial begin
     clk = 1;
     forever begin
       #(CLK_PERIOD/2) clk = ~clk;
+      q_id = 0;
+      q = 28'hFFFC001;
     end 
-    q_id = 0;
-    q = 28'hFFFC001;
   end
 
   modular_reduction mr_instance (
@@ -261,11 +260,12 @@ module ntt_core_tb;
 
   // testing
   integer i;
+  bit [2*{io_width}-1:0] rand_num;
   initial begin
     #(3.5 * CLK_PERIOD);
     for (i = 0; i < 16; i = i + 1) begin
       mult_data_valid = 1'b1;
-      rand_num = $urandom % (2**{io_width*2});
+      std::randomize(rand_num);
       mult_data = rand_num;
       #CLK_PERIOD;
     end
