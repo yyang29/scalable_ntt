@@ -1,88 +1,95 @@
 # Generate SPN
 
 import math
+import random
 
 import gressGen
 import memGen
 
 
-def gen_common_modules(ntt_config):
-    genCounter(ntt_config.out_folder + '/counter.sv',
-               int(2*ntt_config.N/ntt_config.dp))
-    gen_switch_2_2(ntt_config)
-    genDataSPRam(ntt_config.out_folder + '/mem.sv', ntt_config.dp,
+def gen_common_modules(ntt_config, d_idx):
+    out_folder = ntt_config.out_folder + '/design_' + str(d_idx)
+    genCounter(out_folder + '/counter.sv',
+               int(2*ntt_config.N/ntt_config.dp[d_idx]))
+    gen_switch_2_2(ntt_config, d_idx)
+    genDataSPRam(out_folder + '/mem.sv', ntt_config.dp[d_idx],
                  ntt_config.N, ntt_config.io_width, 'block_ram_sp')
-    genDataSPRam(ntt_config.out_folder + '/mem.sv', ntt_config.dp,
+    genDataSPRam(out_folder + '/mem.sv', ntt_config.dp[d_idx],
                  ntt_config.N, ntt_config.io_width, 'dist_ram_sp')
-    genDataDPRam(ntt_config.out_folder + '/mem.sv', ntt_config.dp,
+    genDataDPRam(out_folder + '/mem.sv', ntt_config.dp[d_idx],
                  ntt_config.N, ntt_config.io_width, 'block_ram_dp')
-    genDataDPRam(ntt_config.out_folder + '/mem.sv', ntt_config.dp,
+    genDataDPRam(out_folder + '/mem.sv', ntt_config.dp[d_idx],
                  ntt_config.N, ntt_config.io_width, 'dist_ram_dp')
 
 
-def getCtrl(ntt_config):
+def getCtrl(ntt_config, d_idx, strides):
     numIntStage = ntt_config.spn_stages_per_spatial_perm
     numSwitchPerStage = ntt_config.spn_switches_per_stage
-    numCtrlBitsPerSwitch = int(ntt_config.N // ntt_config.dp)
-    numMem = ntt_config.dp
+    numCtrlBitsPerSwitch = int(ntt_config.N // ntt_config.dp[d_idx]) * len(strides)
+    numMem = ntt_config.dp[d_idx]
 
     # control bit vectors for ingress stage
-    ingressStageBits = [[[0 for k in range(numCtrlBitsPerSwitch)]
-                         for j in range(numSwitchPerStage)]
-                        for i in range(numIntStage)]
+    ingressStageBits = [[[random.randint(0, 1) for k in range(numCtrlBitsPerSwitch)]
+                         for j in range(numSwitchPerStage(d_idx))]
+                        for i in range(numIntStage(d_idx))]
     # control bit vectors for egress stage
-    egressStageBits = [[[0 for k in range(numCtrlBitsPerSwitch)]
-                        for j in range(numSwitchPerStage)]
-                       for i in range(numIntStage)]
+    egressStageBits = [[[random.randint(0, 1) for k in range(numCtrlBitsPerSwitch)]
+                        for j in range(numSwitchPerStage(d_idx))]
+                       for i in range(numIntStage(d_idx))]
     memAddr = [[] for k in range(0, numMem)]
+
+    for i in range(numMem):
+        memAddr[i] = [random.randint(0, int(ntt_config.N // ntt_config.dp[d_idx]) - 1)
+                for k in range(int(ntt_config.N // ntt_config.dp[d_idx]) * len(strides))]
 
     return ingressStageBits, egressStageBits, memAddr
 
 
-def gen_spn(ntt_config, spn_id, routing):
+def gen_spn(ntt_config, d_idx, tp_idx, pp_idx, routing):
 
-    print('generating SPN %d with routing stride %s, io_width %d, dp %d...'
-          % (spn_id, routing, ntt_config.io_width, ntt_config.dp))
+    print('generating design %d tp %d pp %d SPN, io_width %d, dp %d...'
+          % (d_idx, tp_idx, pp_idx, ntt_config.io_width, ntt_config.dp[d_idx]))
 
-    filename = ntt_config.out_folder + '/spn_' + str(spn_id) + '.sv'
+    out_folder = ntt_config.out_folder + '/design_' + str(d_idx)
+    filename = out_folder + '/spn_' + str(tp_idx) + '_' + str(pp_idx) + '.sv'
 
-    ingressStageBits, egressStageBits, memAddr = getCtrl(ntt_config)
+    ingressStageBits, egressStageBits, memAddr = getCtrl(ntt_config, d_idx, routing)
 
     # Connect wireIn with LB, RB, MemStage
     regOutSwitch, regOutWireCon = [], []
     # Determine if register one switch stage or one wire stage
-    for i in range(0, int(math.log(ntt_config.dp, 2))):
+    for i in range(0, int(math.log(ntt_config.dp[d_idx], 2))):
         a, b = 0, 0
         # Currently, to simplify switch control, only one pipeline stage enabled
-        if(i == int(math.log(ntt_config.dp, 2))-1):
+        if(i == int(math.log(ntt_config.dp[d_idx], 2))-1):
             regOutSwitch.append(a)
         else:
             regOutSwitch.append(b)
         regOutWireCon.append(b)
 
-    module_prefix = 'spn_' + str(spn_id)
+    module_prefix = 'spn_' + str(tp_idx) + '_' + str(pp_idx)
 
-    nameLB = gressGen.genStagesBlock(filename, ntt_config.dp, routing[0], ntt_config.N / ntt_config.dp,
+    nameLB = gressGen.genStagesBlock(filename, ntt_config.dp[d_idx], routing[0], ntt_config.N / ntt_config.dp[d_idx],
                                      'L', ntt_config.io_width, ingressStageBits, regOutSwitch, regOutWireCon,
                                      False, 0, module_prefix)
 
-    nameRB = gressGen.genStagesBlock(filename, ntt_config.dp, routing[0], ntt_config.N / ntt_config.dp,
+    nameRB = gressGen.genStagesBlock(filename, ntt_config.dp[d_idx], routing[0], ntt_config.N / ntt_config.dp[d_idx],
                                      'R', ntt_config.io_width, egressStageBits, regOutSwitch[::-1],
                                      regOutWireCon, False, 0, module_prefix)
 
-    nameMemStage = memGen.genMemStage(filename, ntt_config.dp, ntt_config.N, routing[0], ntt_config.io_width,
+    nameMemStage = memGen.genMemStage(filename, ntt_config.dp[d_idx], ntt_config.N, routing[0], ntt_config.io_width,
                                       memAddr, False, 0, module_prefix)
 
     # Gen permutation module
     with open(filename, 'a+') as wrFile:
         wrFile.write('\n')
-        wrFile.write('module spn_{}'.format(spn_id))
+        wrFile.write('module {}'.format(module_prefix))
         wrFile.write('(\n')
 
-    genMultiPortName(filename, ntt_config.dp, 'inData', False)
+    genMultiPortName(filename, ntt_config.dp[d_idx], 'inData', False)
     with open(filename, 'a') as wrFile:
         wrFile.write(',\n')
-    genMultiPortName(filename, ntt_config.dp, 'outData', False)
+    genMultiPortName(filename, ntt_config.dp[d_idx], 'outData', False)
     with open(filename, 'a') as wrFile:
         wrFile.write(',\n')
 
@@ -98,14 +105,14 @@ def gen_spn(ntt_config, spn_id, routing):
         wrFile.write('input in_start, clk, rst;        \n  ')
         wrFile.write('input [DATA_WIDTH-1:0] ')
 
-    genMultiPortName(filename, ntt_config.dp, 'inData', True)
+    genMultiPortName(filename, ntt_config.dp[d_idx], 'inData', True)
     with open(filename, 'a') as wrFile:
         wrFile.write(';\n  ')
 
     with open(filename, 'a') as wrFile:
         wrFile.write('output [DATA_WIDTH-1:0] ')
 
-    genMultiPortName(filename, ntt_config.dp, 'outData', True)
+    genMultiPortName(filename, ntt_config.dp[d_idx], 'outData', True)
 
     with open(filename, 'a') as wrFile:
         wrFile.write('; \n  ')
@@ -114,21 +121,21 @@ def gen_spn(ntt_config, spn_id, routing):
     with open(filename, 'a') as wrFile:
         wrFile.write('\n  ')
 
-    nameLB = 'spn_' + str(spn_id) + '_LB'
-    nameRB = 'spn_' + str(spn_id) + '_RB'
-    nameMemStage = 'spn_' + str(spn_id) + '_Mem'
-    counter_width = int(math.log(ntt_config.N / ntt_config.dp, 2.0))
+    nameLB = module_prefix + '_ingressStage_p' + str(ntt_config.dp[d_idx])
+    nameRB = module_prefix + '_egressStage_p' + str(ntt_config.dp[d_idx])
+    nameMemStage = module_prefix + '_mem_stage_dp' + str(ntt_config.dp[d_idx])
+    counter_width = int(math.log(ntt_config.N / ntt_config.dp[d_idx], 2.0))
 
     with open(filename, 'a') as wrFile:
         wrFile.write('\n  ')
         wrFile.write('wire [DATA_WIDTH-1:0] wireIn [' +
-                     str(ntt_config.dp-1)+':0];                  \n  ')
+                     str(ntt_config.dp[d_idx]-1)+':0];                  \n  ')
         wrFile.write('wire [DATA_WIDTH-1:0] wireOut [' +
-                     str(ntt_config.dp-1)+':0];                 \n  ')
+                     str(ntt_config.dp[d_idx]-1)+':0];                 \n  ')
         wrFile.write('wire [DATA_WIDTH-1:0] wireOut_LB [' +
-                     str(ntt_config.dp-1)+':0];              \n  ')
+                     str(ntt_config.dp[d_idx]-1)+':0];              \n  ')
         wrFile.write('wire [DATA_WIDTH-1:0] wireIn_RB [' +
-                     str(ntt_config.dp-1)+':0];               \n  ')
+                     str(ntt_config.dp[d_idx]-1)+':0];               \n  ')
         wrFile.write('wire out_start_LB;               \n  ')
         wrFile.write('wire out_start_MemStage;               \n  ')
         wrFile.write('wire out_start_RB;               \n\n  ')
@@ -136,13 +143,13 @@ def gen_spn(ntt_config, spn_id, routing):
                      ':0] counter_out_w;               \n  ')
 
         # Connect wireIn with inData
-        for i in range(0, ntt_config.dp):
+        for i in range(0, ntt_config.dp[d_idx]):
             wrFile.write(
                 'assign wireIn['+str(i)+'] = inData_'+str(i)+';    \n  ')
         wrFile.write('\n  ')
 
         # counter for control
-        wrFile.write('counter_'+str(2 * ntt_config.N // ntt_config.dp))
+        wrFile.write('counter_'+str(2 * ntt_config.N // ntt_config.dp[d_idx]))
         wrFile.write(' ctrl_unit'+'(')
         wrFile.write('.in_start(in_start),')
         wrFile.write(
@@ -150,9 +157,9 @@ def gen_spn(ntt_config, spn_id, routing):
 
         # Connect wireIn with ingress Stage
         wrFile.write(nameLB+' ' + nameLB+'_inst(')
-        for j in range(0, ntt_config.dp):
+        for j in range(0, ntt_config.dp[d_idx]):
             wrFile.write('.inData_'+str(j)+'(wireIn['+str(j)+']), ')
-        for j in range(0, ntt_config.dp):
+        for j in range(0, ntt_config.dp[d_idx]):
             wrFile.write('.outData_'+str(j)+'(wireOut_LB['+str(j)+']), ')
         wrFile.write('.in_start(in_start), ')
         wrFile.write('.out_start(out_start_LB), ')
@@ -161,9 +168,9 @@ def gen_spn(ntt_config, spn_id, routing):
 
         # Connect ingress Stage with memory stage
         wrFile.write(nameMemStage+' ' + nameMemStage+'_inst(')
-        for j in range(0, ntt_config.dp):
+        for j in range(0, ntt_config.dp[d_idx]):
             wrFile.write('.inData_'+str(j)+'(wireOut_LB['+str(j)+']), ')
-        for j in range(0, ntt_config.dp):
+        for j in range(0, ntt_config.dp[d_idx]):
             wrFile.write('.outData_'+str(j)+'(wireIn_RB['+str(j)+']), ')
         wrFile.write('.in_start(out_start_LB), ')
         wrFile.write('.out_start(out_start_MemStage), ')
@@ -173,9 +180,9 @@ def gen_spn(ntt_config, spn_id, routing):
 
         # Connect memory stage with egress stage
         wrFile.write(nameRB+' ' + nameRB+'_inst(')
-        for j in range(0, ntt_config.dp):
+        for j in range(0, ntt_config.dp[d_idx]):
             wrFile.write('.inData_'+str(j)+'(wireIn_RB['+str(j)+']), ')
-        for j in range(0, ntt_config.dp):
+        for j in range(0, ntt_config.dp[d_idx]):
             wrFile.write('.outData_'+str(j)+'(wireOut['+str(j)+']), ')
         wrFile.write('.in_start(out_start_MemStage), ')
         wrFile.write('.out_start(out_start_RB), ')
@@ -185,7 +192,7 @@ def gen_spn(ntt_config, spn_id, routing):
     with open(filename, 'a') as wrFile:
         wrFile.write('\n  ')
         # Connect wireOut with OutData
-        for i in range(0, ntt_config.dp):
+        for i in range(0, ntt_config.dp[d_idx]):
             wrFile.write('assign outData_'+str(i) +
                          ' = wireOut['+str(i)+'];    \n  ')
         wrFile.write('assign out_start = out_start_RB;    \n  ')
@@ -346,9 +353,10 @@ def genDataDPRam(fileName, dp, sizeN, dataWidth, ramStyle):
         wrFile.write('endmodule                        \n\n')
 
 
-def gen_switch_2_2(ntt_config):
+def gen_switch_2_2(ntt_config, d_idx):
 
-    filename = ntt_config.out_folder + '/switch_2x2.sv'
+    filename = ntt_config.out_folder + \
+        '/design_' + str(d_idx) + '/switch_2x2.sv'
 
     switch_sv = f"""// This verilog file is generated automatically.
 // Author: Yang Yang (yyang172@usc.edu)

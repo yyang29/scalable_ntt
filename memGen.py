@@ -174,9 +174,7 @@ def mapStridePer(inSize, inIdx, stride):
 def genAddrRom(fileName, dp, sizeN, addrVec, memIdx, module_prefix):
     vecSize = len(addrVec)  ##vecSize = inpnut size / dp
 
-    #FIXME
-    #romAddrWidth = int(math.ceil(math.log(vecSize, 2.0)))
-    romAddrWidth = 8
+    romAddrWidth = int(math.ceil(math.log(vecSize, 2.0)))
     dataWidth = romAddrWidth
 
     #Gen connection module
@@ -240,9 +238,7 @@ def genAddrGen(fileName, dp, sizeN, addrVec, perIdx, module_prefix):
     romAddrWidth = []
     for i in range(0,dp):
         vecSize = len(addrVec[i])
-        # FIXME
-        #romAddrWidth.append(int(math.ceil(math.log(vecSize, 2.0))) )
-        romAddrWidth.append(1)
+        romAddrWidth.append(int(math.ceil(math.log(vecSize, 2.0))) )
 
     sameSizeMap = {}
     count_tmp = 0
@@ -964,7 +960,7 @@ def genMemStage(fileName, dp, sizeN, stride, dataWidth, addrVec, regOut, perIdx,
         ##Generate ram address generator module
         wrFile.write(addrGenModuleName+" addr_gen_inst(")
         wrFile.write("."+inStartPortName+"("+inStartPortName+"), ")
-        wrFile.write(".counter_in(counter_in), ")
+        #wrFile.write(".counter_in(counter_in), ")
         wrFile.write(".wen_out(wen_wire), ")
         wrFile.write(".out_start(out_start_wire), ")
         if stride != 0:

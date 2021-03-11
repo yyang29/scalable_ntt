@@ -69,12 +69,16 @@ def dse(ntt_config):
 
         tf_mem_size = ntt_config.N * bytes_coefficient * 8
         tf_brams = math.ceil(tf_mem_size / 32000)
-        spn_mem_size = ntt_config.N * bytes_coefficient * 8
-        spn_brams = math.ceil(spn_mem_size / 32000)
-        bram_super_pipe = spn_brams
+        spn_brams = math.ceil(ntt_config.N * bytes_coefficient * 8 / dp / 32000) * dp
 
-        max_pp_bram = (ntt_config.limit_bram - tf_brams *
-                       ntt_config.tp) // spn_brams // ntt_config.tp
+        max_pp_bram = 0
+        for pp in range(1, ntt_config.ntt_stages+1):
+            tf = math.ceil(ntt_config.N * bytes_coefficient * 8 / pp / 32000) * pp * ntt_config.tp
+            spn = spn_brams * pp * ntt_config.tp
+            print('pp', pp, 'tf brams', tf, 'spn brams', spn)
+            bram_needed = tf + spn
+            if bram_needed < ntt_config.limit_bram:
+                max_pp_bram = pp
         print('max pp with bram limitor... ', max_pp_bram)
 
         pp = min(max_pp_dsp, max_pp_bram)
