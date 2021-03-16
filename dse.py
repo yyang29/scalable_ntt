@@ -8,27 +8,31 @@ def dse(ntt_config):
 
     # EDIT EDIT EDIT
     # const
-    special_core_latency = 6
-    general_core_latency = 10
-    if ntt_config.io_width == 32:
+    if ntt_config.io_width == 28:
+        special_core_latency = 7
+        general_core_latency = 12
         dsp_per_special_core = 4
         lut_per_special_core = 0
         ff_per_special_core = 0
-        dsp_per_general_core = 8
+        dsp_per_general_core = 10
         lut_per_general_core = 0
         ff_per_general_core = 0
     elif ntt_config.io_width == 52:
+        special_core_latency = 13
+        general_core_latency = 26
         dsp_per_special_core = 9
         lut_per_special_core = 0
         ff_per_special_core = 0
-        dsp_per_general_core = 18
+        dsp_per_general_core = 24
         lut_per_general_core = 0
         ff_per_general_core = 0
-    elif ntt_config.io_width == 60:
-        dsp_per_special_core = 16
+    elif ntt_config.io_width == 62:
+        special_core_latency = 18
+        general_core_latency = 32
+        dsp_per_special_core = 12
         lut_per_special_core = 0
         ff_per_special_core = 0
-        dsp_per_general_core = 22
+        dsp_per_general_core = 32
         lut_per_general_core = 0
         ff_per_general_core = 0
     #######################################

@@ -12,6 +12,7 @@ def gen_common_modules(ntt_config, d_idx):
     genCounter(out_folder + '/counter.sv',
                int(2*ntt_config.N/ntt_config.dp[d_idx]))
     gen_switch_2_2(ntt_config, d_idx)
+    gen_sr(ntt_config, d_idx)
     genDataSPRam(out_folder + '/mem.sv', ntt_config.dp[d_idx],
                  ntt_config.N, ntt_config.io_width, 'block_ram_sp')
     genDataSPRam(out_folder + '/mem.sv', ntt_config.dp[d_idx],
@@ -351,6 +352,49 @@ def genDataDPRam(fileName, dp, sizeN, dataWidth, ramStyle):
 
         wrFile.write('\n')
         wrFile.write('endmodule                        \n\n')
+
+
+def gen_sr(ntt_config, d_idx):
+
+    filename = ntt_config.out_folder + \
+        '/design_' + str(d_idx) + '/shift_register.sv'
+
+    sr_sv = f"""// This verilog file is generated automatically.
+// Author: Yang Yang (yyang172@usc.edu)
+
+module Shift_Register #(
+    NPIPE_DEPTH = 2,
+    DATA_WIDTH = 32) (
+    clock,
+    reset,
+    input_data,
+    output_data);
+
+  input                         clock;
+  input                         reset;
+  input logic[DATA_WIDTH-1:0]   input_data;
+  output logic[DATA_WIDTH-1:0]  output_data;
+
+  logic[DATA_WIDTH-1:0]         pipe_reg[NPIPE_DEPTH-1:0];
+
+  integer i;
+
+  always_ff @ (posedge clock) begin
+    if (reset) begin
+      output_data <= 0;
+    end else begin
+      output_data <= pipe_reg[NPIPE_DEPTH-1];
+      pipe_reg[0] <= input_data;
+      for (i = 0; i < NPIPE_DEPTH-1; i = i+1)
+        pipe_reg[i+1] <= pipe_reg[i];
+    end
+  end
+
+endmodule
+"""
+    with open(filename, 'a+') as fid:
+        fid.write(sr_sv)
+
 
 
 def gen_switch_2_2(ntt_config, d_idx):

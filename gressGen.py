@@ -264,7 +264,7 @@ def genSwitchesStage(fileName, dp, lOrR, dataWidth, regOut, nullVec, stageIdx, p
         wrFile.write(str(dataWidth))
         wrFile.write(";                                \n  ")       
         wrFile.write("input in_start, clk, rst;                   \n  ")
-        wrFile.write("input ["+str(dp/2)+"-1:0] ctrl;        \n  ")
+        wrFile.write("input ["+str(dp//2)+"-1:0] ctrl;        \n  ")
         wrFile.write("input [DATA_WIDTH-1:0] ")
 
     ##input ports
@@ -368,7 +368,7 @@ def genCtrlRom(fileName, stageIdx, dp, lOrR, ctrlVec, perIdx, module_prefix):
         #wrFile.write(";                                \n  ")       
         wrFile.write("input en, clk, rst;                   \n  ")
         wrFile.write("input ["+str(addrWidth-1)+":0] addr;                        \n  ")
-        wrFile.write("output reg ["+str(dp/2-1)+":0] data;        \n  ")
+        wrFile.write("output reg ["+str(dp//2-1)+":0] data;        \n  ")
 
     ##Wires
     with open(fileName, 'a') as wrFile:
@@ -429,7 +429,7 @@ def genSwitchCtrl(fileName, stageIdx, dp, lOrR, ctrlVec, perIdx, module_prefix):
         #wrFile.write(str(dataWidth))
         #wrFile.write(";                                \n  ")       
         wrFile.write("input in_start, clk, rst;                   \n  ")
-        wrFile.write("output ["+str(dp/2-1)+":0] ctrl_out;        \n  ")
+        wrFile.write("output ["+str(dp//2-1)+":0] ctrl_out;        \n  ")
         wrFile.write("\n  ")
         wrFile.write("reg ["+str(addrWidth-1)+":0] addr;        \n  ")
         wrFile.write("reg state;        \n  ")
@@ -739,7 +739,7 @@ def genStagesBlock(fileName, dp, g_stride, g_latency, lOrR, dataWidth, ctrlIn3D,
                 ##i=0, reverse ctrl one time for stageIdx
                 cycles_per_state = cycle_period_vec[stageIdx]
                 width_c = int(math.log(cycles_per_state,2))
-                for i in range(dp/2):
+                for i in range(dp//2):
                     if lOrR == "L":
                         wrFile.write("assign wire_ctrl_stage"+str(stageIdx)+"["+str(i)+"] = counter_w["+str(width_c)+"]; \n  ")
                     elif lOrR == "R":

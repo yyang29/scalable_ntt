@@ -5,15 +5,13 @@ from __future__ import print_function
 import math
 
 
-def gen_ntt_core(out_file, ntt_core_type='resource_efficient', io_width=28,
-                 moduli_config=None):
+def gen_ntt_core(out_file, ntt_core_type='general_purpose', io_width=28,
+                 modulus=12889, moduli_config=None, ntt_config=None, d_idx=0):
+
+    num_tf_per_core = 32
 
     moduli_config = [[
         [28, 37, 2, 0, 0, 0, 1],        # sign: 1 - negative
-        [42, 45, 42, 40, 41, 46, 0],
-        [46, 53, 49, 0, 0, 0, 1],
-    ], [
-        [28, 37, 2, 0, 0, 0, 1],
         [42, 45, 42, 40, 41, 46, 0],
         [46, 53, 49, 0, 0, 0, 1],
     ]]
@@ -22,10 +20,9 @@ def gen_ntt_core(out_file, ntt_core_type='resource_efficient', io_width=28,
     adder_tree_levels = 0
 
     # parameters declarations
-    params = f'localparam NUM_Q = {len(moduli_config)};\n'
-    params += '  localparam Q_ID_BITS = $clog2(NUM_Q);\n'
-    params += '  localparam ADD_OP = 1;\n'
+    params = f'localparam ADD_OP = 1;\n'
     params += '  localparam SUB_OP = 0;\n'
+    params += f'  localparam Q = {modulus};\n'
     for i in range(0, len(moduli_config)):
         adder_tree_inputs = max(len(moduli_config[i])+1, adder_tree_inputs)
         adder_tree_levels = int(math.ceil(math.log(adder_tree_inputs, 2)))
@@ -66,9 +63,9 @@ def gen_ntt_core(out_file, ntt_core_type='resource_efficient', io_width=28,
         nodes_curr_level = nodes_prev_level // 2 + nodes_prev_level % 2
         for j in range(0, nodes_curr_level):
             if i == 0:
-                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (op_{j*2}_signed, op_{j*2+1}_signed, sum_wire_l{i}_{j}, q, 1\'b0);\n'
+                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (op_{j*2}_signed, op_{j*2+1}_signed, sum_wire_l{i}_{j});\n'
             else:
-                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (sum_reg_l{i-1}_{j*2}, sum_reg_l{i-1}_{j*2+1}, sum_wire_l{i}_{j}, q, 1\'b0);\n'
+                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (sum_reg_l{i-1}_{j*2}, sum_reg_l{i-1}_{j*2+1}, sum_wire_l{i}_{j});\n'
             if i == adder_tree_levels - 1:
                 assert j == 0
                 adder_tree_construct += f'  assign out_data = sum_reg_l{i}_{j};\n'
@@ -76,12 +73,9 @@ def gen_ntt_core(out_file, ntt_core_type='resource_efficient', io_width=28,
         nodes_prev_level = nodes_curr_level
 
     # adder tree operands updates
-    opr_construct = '\n  always @ (q_id, mult_data) begin\n'
+    opr_construct = '\n  always_ff @ (posedge clk) begin\n'
+    opr_construct += f'    if (mult_data_valid) begin\n'
     for i in range(0, len(moduli_config)):
-        if i == 0:
-            opr_construct += f'    if (q_id == {i}) begin\n'
-        else:
-            opr_construct += f'    end else if (q_id == {i}) begin\n'
         for j in range(0, adder_tree_inputs):
             if j < adder_tree_inputs - 1:
                 opr_construct += f"      op_{j} <= 28'h0 | (mult_data[Q_{i}_OP_{j}_P1_END_IDX:Q_{i}_OP_{j}_P1_START_IDX] << Q_{i}_OP_{j}_P1_OFFSET) | (mult_data[Q_{i}_OP_{j}_P2_END_IDX:Q_{i}_OP_{j}_P2_START_IDX] << Q_{i}_OP_{j}_P2_OFFSET);\n"
@@ -106,24 +100,45 @@ def gen_ntt_core(out_file, ntt_core_type='resource_efficient', io_width=28,
             always_block_dp += f'      data_valid_reg_l{i} <= data_valid_reg_l{i-1};\n'
         nodes_prev_level = nodes_curr_level
 
-    if ntt_core_type == 'resource_efficient':
-        ntt_core_sv = f"""// This verilog file is generated automatically.
-// Resource efficient NTT core optimized for solinas primes.
-// Author: Yang Yang (yyang172@usc.edu)
-`timescale 1ns/1ps
+    ntt_core_pipe_regs = '\n'
+    ntt_core_pipe_regs += f'  logic [{io_width}-1:0] w_reg;\n'
+    ntt_core_pipe_regs += f'  logic [{io_width}-1:0] x1_reg;\n'
+    ntt_core_pipe_regs += f'  logic [{io_width}-1:0] x2_reg;\n'
+    for i in range(0, adder_tree_levels):
+        ntt_core_pipe_regs += f'  logic [{io_width}-1:0] x{i+3}_reg;\n'
 
-module modular_adder (
+    ntt_core_seq_block = '\n'
+    ntt_core_seq_block += '  always_ff @(posedge clk) begin\n'
+    ntt_core_seq_block += '    if (rst) begin\n'
+    ntt_core_seq_block += '      counter <= 0;\n'
+    ntt_core_seq_block += '      twiddle_rd_addr_valid <= 0;\n'
+    ntt_core_seq_block += '      twiddle_rd_addr <= 0;\n'
+    ntt_core_seq_block += '    end else begin\n'
+    ntt_core_seq_block += '      if (in_data_valid) begin\n'
+    ntt_core_seq_block += '        counter <= counter + 1;\n'
+    ntt_core_seq_block += '        twiddle_rd_addr_valid <= 1;\n'
+    ntt_core_seq_block += '        twiddle_rd_addr <= counter;\n'
+    ntt_core_seq_block += '        x1_reg <= in_data_0;\n'
+    ntt_core_seq_block += '        x2_reg <= x1_reg;\n'
+    for i in range(0, adder_tree_levels):
+        ntt_core_seq_block += f'        x{i+3}_reg <= x{i+2}_reg;\n'
+    ntt_core_seq_block += '      end\n'
+    ntt_core_seq_block += '    end\n'
+    ntt_core_seq_block += '  end\n'
+
+    ma_sv = f"""
+module modular_adder #(
+    parameter op = 0
+  ) (
     x,
     y,
-    out,
-    q,
-    op
+    out
   );
+
+  localparam q = {modulus};
 
   input [{io_width}-1:0] x;
   input [{io_width}-1:0] y;
-  input [{io_width}-1:0] q;
-  input op;
   output [{io_width}-1:0] out;
 
   logic [{io_width}-1:0] z1;
@@ -135,7 +150,15 @@ module modular_adder (
   assign out = (z1 >= q) ? z2[{io_width}-1:0] : z1[{io_width}-1:0];
 
 endmodule
+"""
 
+    if ntt_core_type == 'special_purpose':
+        ntt_core_sv = f"""// This verilog file is generated automatically.
+// Resource efficient NTT core optimized for solinas primes.
+// Author: Yang Yang (yyang172@usc.edu)
+`timescale 1ns/1ps
+
+{ma_sv}
 
 module modular_reduction (
     clk,
@@ -143,9 +166,7 @@ module modular_reduction (
     mult_data_valid,
     mult_data,
     out_data_valid,
-    out_data,
-    q_id,
-    q
+    out_data
   );
 
   {params}
@@ -157,9 +178,6 @@ module modular_reduction (
 
   output logic out_data_valid;
   output [{io_width}-1:0] out_data;
-
-  input [Q_ID_BITS-1:0] q_id;
-  input [{io_width}-1:0] q;
 
   {internal_signals}
 
@@ -174,114 +192,162 @@ module modular_reduction (
 endmodule
 
 
-// module ntt_core (
-//     in_data_valid,
-//     in_data_0,
-//     in_data_1,
-//     out_data_valid,
-//     out_data_0,
-//     out_data_1,
-//     twiddle_rd_addr_valid,
-//     twiddle_rd_addr,
-//     twiddle_rd_data_valid,
-//     twiddle_rd_data,
-//     q_id,
-//     clk,
-//     rst
-//   );
-// 
-//   input ctrl, clk, rst;
-//   input         [{io_width}-1:0] inData_0, inData_1;
-//   output logic  [{io_width}-1:0] outData_0, outData_1;
-// 
-//   always_ff @ (posedge clk) begin
-//     if (rst) begin
-//       outData_0 <= 0;
-//       outData_1 <= 0;
-//     end else begin
-//       outData_0 <= (!ctrl) ? inData_0 : inData_1;
-//       outData_1 <= (!ctrl) ? inData_1 : inData_0;
-//     end
-//   end
-// 
-// endmodule
+module ntt_core (
+    in_data_valid,
+    in_data_0,
+    in_data_1,
+    out_data_0,
+    out_data_1,
+    twiddle_rd_addr_valid,
+    twiddle_rd_addr,
+    twiddle_rd_data,
+    clk,
+    rst
+  );
+
+  input clk, rst;
+  input         in_data_valid;
+  input         [{io_width}-1:0] in_data_0, in_data_1;
+  input         [{io_width}-1:0] twiddle_rd_data;
+  output logic  twiddle_rd_addr_valid;
+  output logic  [{num_tf_per_core.bit_length() - 2}:0] twiddle_rd_addr;
+  output logic  [{io_width}-1:0] out_data_0, out_data_1;
+
+  logic [{num_tf_per_core.bit_length() - 2}:0] counter;
+
+  {ntt_core_pipe_regs}
+
+  logic [{2*io_width}-1:0] z;
+  logic [{io_width}-1:0] mr_out;
+
+  assign z = in_data_1 * twiddle_rd_data;
+
+  modular_reduction mr(
+    .clk(clk),
+    .rst(rst),
+    .mult_data_valid(1'b1),
+    .mult_data(z),
+    .out_data(mr_out));
+
+  modular_adder #(
+    .op(0)) ma_inst_0 (x{adder_tree_levels+2}_reg, mr_out, out_data_0);
+
+  modular_adder #(
+    .op(1)) ma_inst_1 (x{adder_tree_levels+2}_reg, mr_out, out_data_1);
+
+  {ntt_core_seq_block}
+
+endmodule
 
 """
         with open(out_file + '.sv', 'a+') as fid:
             fid.write(ntt_core_sv)
 
-        ntt_core_test_sv = f"""// This verilog file is generated automatically.
-// Resource efficient NTT core optimized for solinas primes.
-// Author: Yang Yang (yyang172@usc.edu)
-`timescale 1ns/1ps
-
-module ntt_core_tb;
-
-  localparam NUM_Q = {len(moduli_config)};
-  localparam Q_ID_BITS = $clog2(NUM_Q);
-  localparam CLK_PERIOD = 10;
-  logic clk, rst;
-
-  logic mult_data_valid;
-  logic [2*{io_width}-1:0] mult_data;
-
-  logic out_data_valid;
-  logic [{io_width}-1:0] out_data;
-
-  logic [Q_ID_BITS-1:0] q_id;
-  logic [{io_width}-1:0] q;
-
-  // clock generation
-  initial begin
-    clk = 1;
-    forever begin
-      #(CLK_PERIOD/2) clk = ~clk;
-      q_id = 0;
-      q = 28'hFFFC001;
-    end 
-  end
-
-  modular_reduction mr_instance (
-    .clk(clk),
-    .rst(rst),
-    .mult_data_valid(mult_data_valid),
-    .mult_data(mult_data),
-    .out_data_valid(out_data_valid),
-    .out_data(out_data),
-    .q_id(q_id),
-    .q(q)
-  );
-
-  // reset generation
-  initial begin
-    rst = 1;
-    #(2 * CLK_PERIOD) rst = 0;
-  end
-
-  // testing
-  integer i;
-  bit [2*{io_width}-1:0] rand_num;
-  initial begin
-    #(3.5 * CLK_PERIOD);
-    for (i = 0; i < 16; i = i + 1) begin
-      mult_data_valid = 1'b1;
-      std::randomize(rand_num);
-      mult_data = rand_num;
-      #CLK_PERIOD;
-    end
-  end
- 
-endmodule
-
-"""
-        with open(out_file + '_test.sv', 'a+') as fid:
-            fid.write(ntt_core_test_sv)
-
     else:
         ntt_core_sv = f"""// This verilog file is generated automatically.
 // General purpose NTT core.
 // Author: Yang Yang (yyang172@usc.edu)
+`timescale 1ns/1ps
+
+{ma_sv}
+
+
+module ntt_core (
+    in_data_valid,
+    in_data_0,
+    in_data_1,
+    out_data_0,
+    out_data_1,
+    twiddle_rd_addr_valid,
+    twiddle_rd_addr,
+    twiddle_rd_data,
+    clk,
+    rst
+  );
+
+  localparam L = {io_width} + 1;
+  localparam T = {(1 << (io_width + 1)) // modulus};
+
+  input clk, rst;
+  input         in_data_valid;
+  input         [{io_width}-1:0] in_data_0, in_data_1;
+  input         [{io_width}-1:0] twiddle_rd_data;
+  output logic  twiddle_rd_addr_valid;
+  output logic  [{num_tf_per_core.bit_length() - 2}:0] twiddle_rd_addr;
+  output logic  [{io_width}-1:0] out_data_0, out_data_1;
+
+  logic [{num_tf_per_core.bit_length() - 2}:0] counter;
+
+  logic [{2*io_width}-1:0] U;
+  logic [{2*io_width}-1:0] U_reg;
+  logic [{io_width}-1:0] V;
+  logic [{io_width}-1:0] V_reg;
+  logic [{io_width}-1:0] W;
+  logic [{io_width}-1:0] W_reg;
+  logic [{io_width}:0] X;
+  logic [{io_width}:0] X_reg;
+  logic [{io_width}-1:0] X_shift_out;
+  logic [{io_width}-1:0] Y_shift_out;
+  logic [{io_width}-1:0] Y_reg;
+  logic [{io_width}:0] Z_0;
+  logic [{io_width}:0] Z_0_reg;
+  logic [{io_width}:0] Z_1;
+  logic [{io_width}:0] Z_1_reg;
+
+  logic [{io_width}-1:0] mr_out;
+
+
+  Shift_Register #(
+    .NPIPE_DEPTH(8),
+    .DATA_WIDTH({io_width})) sr_inst_0 (
+    .clock(clk),
+    .reset(rst),
+    .input_data(in_data_1),
+    .output_data(Y_shift_out));
+
+  Shift_Register #(
+    .NPIPE_DEPTH(12),
+    .DATA_WIDTH({io_width})) sr_inst_1 (
+    .clock(clk),
+    .reset(rst),
+    .input_data(in_data_0),
+    .output_data(X_shift_out));
+
+  assign U = in_data_1 * twiddle_rd_data;
+  assign V = U_reg >> (L - 1);
+  assign W = (V_reg * T) >> (L + 1);
+  assign X = W_reg * {modulus};
+  assign Z_0 = X_reg < Y_reg ? (2 << (L + 1)) + X_reg - Y_reg : X_reg - Y_reg;
+  assign Z_1 = Z_0_reg >= 2 * {modulus} ? Z_0_reg - 2 * {modulus} : Z_0_reg - {modulus};
+
+  assign mr_out = Z_1;
+
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      U_reg <= 0;
+      V_reg <= 0;
+      W_reg <= 0;
+      X_reg <= 0;
+      Y_reg <= 0;
+      Z_0_reg <= 0;
+    end else begin
+      U_reg <= U;
+      V_reg <= V;
+      W_reg <= W;
+      X_reg <= X;
+      Y_reg <= Y_shift_out;
+      Z_0_reg <= Z_0;
+    end
+  end
+
+  modular_adder #(
+    .op(0)) ma_inst_0 (X_shift_out, mr_out, out_data_0);
+
+  modular_adder #(
+    .op(1)) ma_inst_1 (X_shift_out, mr_out, out_data_1);
+
+endmodule
+
 """
-
-
-gen_ntt_core('/home/yang/Desktop/test')
+        with open(out_file + '.sv', 'a+') as fid:
+            fid.write(ntt_core_sv)
