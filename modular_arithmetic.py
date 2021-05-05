@@ -8,8 +8,14 @@ import seaborn as sns
 
 
 def gen_solinas_matrix(i, j, sign=1):
-    if j == 1 and sign == -1:
-        return 2
+    # format: one line for each operand
+    # start_idx, end_idx, offset, start_idx, end_idx, offset, ..., operand width, sign
+    ret = []
+    if j == 1 and sign == 1:
+        ret.append([0, i-1, 0, i, 1])
+        ret.append([i, 2*i-1, 0, i, 1])
+        print(np.matrix(ret))
+        return ret
 
     gcd = math.gcd(i, j)
     d = i // gcd
@@ -41,7 +47,6 @@ def gen_solinas_matrix(i, j, sign=1):
 
     print('solinas matrix:')
     print(np.matrix(m))
-    print(gcd)
 
     num_pos = d * [0]
     num_neg = d * [0]
@@ -56,7 +61,104 @@ def gen_solinas_matrix(i, j, sign=1):
     print('pos array: ', num_pos, 'max mod add:', max(num_pos))
     print('neg array: ', num_neg, 'max mod sub:', max(num_neg))
 
-    return max(num_pos) + max(num_neg) + 1
+    added = 0
+    while added < max(num_pos):
+        for i in range(0, d):
+            vector = []
+            start_idx = (i, 0)
+            interval = [-1, -1]
+            offset = 0
+            for j in range(0, d):
+                row = start_idx[0] + j
+                row = row if row < d else row - d
+                col = start_idx[1] + j
+                col = col if col < d else col - d
+
+                if m[row][col] > 0 and interval[0] == -1:
+                    interval[0] = row * gcd
+                    interval[1] = (row + 1) * gcd - 1
+                    offset = col * gcd
+                elif m[row][col] > 0 and interval[1] == row * gcd - 1:
+                    interval[1] = (row + 1) * gcd - 1
+                elif m[row][col] > 0:
+                    vector.append(interval[0])
+                    vector.append(interval[1])
+                    vector.append(offset)
+                    interval[0] = row * gcd
+                    interval[1] = (row + 1) * gcd - 1
+                    offset = col * gcd
+                elif m[row][col] == 0 and interval[0] != -1:
+                    vector.append(interval[0])
+                    vector.append(interval[1])
+                    vector.append(offset)
+                    interval = [-1, -1]
+                    offset = 0
+
+                if m[row][col] > 0:
+                    m[row][col] -= 1
+
+            if interval[0] != -1:
+                vector.append(interval[0])
+                vector.append(interval[1])
+                vector.append(offset)
+                interval = [-1, -1]
+                offset = 0
+
+            if vector:
+                vector.append(1)
+                ret.append(vector)
+                added += 1
+
+    added = 0
+    while added < max(num_neg):
+        for i in range(0, d):
+            vector = []
+            start_idx = (i, 0)
+            interval = [-1, -1]
+            offset = 0
+            for j in range(0, d):
+                row = start_idx[0] + j
+                row = row if row < d else row - d
+                col = start_idx[1] + j
+                col = col if col < d else col - d
+
+                if m[row][col] < 0 and interval[0] == -1:
+                    interval[0] = row * gcd
+                    interval[1] = (row + 1) * gcd - 1
+                    offset = col * gcd
+                elif m[row][col] < 0 and interval[1] == row * gcd - 1:
+                    interval[1] = (row + 1) * gcd - 1
+                elif m[row][col] < 0:
+                    vector.append(interval[0])
+                    vector.append(interval[1])
+                    vector.append(offset)
+                    interval[0] = row * gcd
+                    interval[1] = (row + 1) * gcd - 1
+                    offset = col * gcd
+                elif m[row][col] == 0 and interval[0] != -1:
+                    vector.append(interval[0])
+                    vector.append(interval[1])
+                    vector.append(offset)
+                    interval = [-1, -1]
+                    offset = 0
+
+                if m[row][col] < 0:
+                    m[row][col] += 1
+
+            if interval[0] != -1:
+                vector.append(interval[0])
+                vector.append(interval[1])
+                vector.append(offset)
+                interval = [-1, -1]
+                offset = 0
+
+            if vector:
+                vector.append(-1)
+                ret.append(vector)
+                added += 1
+
+    print(ret)
+    return ret
 
 
 gen_solinas_matrix(13, 1, 1)
@@ -78,10 +180,14 @@ def plot():
                     num = 2**i - 2**j + sign * 1
                     if isprime(num) and num not in visited:
                         visited.add(num)
+                        ret = gen_solinas_matrix(i, j, sign)
+                        adder_inputs = len(ret)
+                        if not (j == 1 and sign == 1):
+                            adder_inputs += 1
                         print(num, i, j, sign, 'bit length:',
-                              num.bit_length(), 'total weights:', gen_solinas_matrix(i, j, sign))
+                              num.bit_length(), 'total weights:', adder_inputs)
                         csv_writer.writerow(
-                            [num, i, j, sign, num.bit_length(), gen_solinas_matrix(i, j, sign)])
+                            [num, i, j, sign, num.bit_length(), adder_inputs])
 
     data_df = pd.read_csv('prime.csv')
 
@@ -92,9 +198,9 @@ def plot():
     ax = sns.scatterplot(x='bit width', y='mod add/sub', hue='prime', size='prime',
                          sizes=(40, 300), data=df1, palette=sns.color_palette(palette='ch:2,r=.2,l=.6', n_colors=7, as_cmap=True))
     plt.ylim(0, 10.5)
-    ax.set_xlabel('bit width', fontsize=12)
-    ax.set_ylabel('adder tree inputs', fontsize=12)
-    ax.tick_params(axis='both', which='major', labelsize=12)
+    ax.set_xlabel('bit width', fontsize=14)
+    ax.set_ylabel('adder tree num of operands', fontsize=14)
+    ax.tick_params(axis='both', which='major', labelsize=14)
 
     ax.legend(title='num of\nprimes', bbox_to_anchor=(
         1.0, 0.8), facecolor='white', edgecolor='white', markerscale=0.9)

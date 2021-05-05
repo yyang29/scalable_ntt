@@ -5,10 +5,15 @@ from __future__ import print_function
 import math
 
 
-def gen_ntt_core(out_file, ntt_core_type='general_purpose', io_width=28,
-                 modulus=12889, moduli_config=None, ntt_config=None, d_idx=0):
+def gen_ntt_core(ntt_core_type, ntt_config, d_idx, tp_idx):
 
-    num_tf_per_core = 32
+    out_folder = ntt_config.out_folder + '/design_' + str(d_idx) + '/'
+    prefix = 'ntt_core_tp_' + str(tp_idx)
+    modulus = ntt_config.moduli[tp_idx]
+
+    io_width = ntt_config.io_width
+
+    num_tf_per_core = ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx]
 
     moduli_config = [[
         [28, 37, 2, 0, 0, 0, 1],        # sign: 1 - negative
@@ -127,7 +132,7 @@ def gen_ntt_core(out_file, ntt_core_type='general_purpose', io_width=28,
     ntt_core_seq_block += '  end\n'
 
     ma_sv = f"""
-module modular_adder #(
+module {prefix}_modular_adder #(
     parameter op = 0
   ) (
     x,
@@ -160,7 +165,7 @@ endmodule
 
 {ma_sv}
 
-module modular_reduction (
+module {prefix}_modular_reduction (
     clk,
     rst,
     mult_data_valid,
@@ -192,7 +197,7 @@ module modular_reduction (
 endmodule
 
 
-module ntt_core (
+module {prefix} (
     in_data_valid,
     in_data_0,
     in_data_1,
@@ -222,17 +227,17 @@ module ntt_core (
 
   assign z = in_data_1 * twiddle_rd_data;
 
-  modular_reduction mr(
+  {prefix}_modular_reduction mr(
     .clk(clk),
     .rst(rst),
     .mult_data_valid(1'b1),
     .mult_data(z),
     .out_data(mr_out));
 
-  modular_adder #(
+  {prefix}_modular_adder #(
     .op(0)) ma_inst_0 (x{adder_tree_levels+2}_reg, mr_out, out_data_0);
 
-  modular_adder #(
+  {prefix}_modular_adder #(
     .op(1)) ma_inst_1 (x{adder_tree_levels+2}_reg, mr_out, out_data_1);
 
   {ntt_core_seq_block}
@@ -240,7 +245,7 @@ module ntt_core (
 endmodule
 
 """
-        with open(out_file + '.sv', 'a+') as fid:
+        with open(out_folder + '.sv', 'a+') as fid:
             fid.write(ntt_core_sv)
 
     else:
@@ -252,7 +257,7 @@ endmodule
 {ma_sv}
 
 
-module ntt_core (
+module {prefix} (
     in_data_valid,
     in_data_0,
     in_data_1,
@@ -340,14 +345,14 @@ module ntt_core (
     end
   end
 
-  modular_adder #(
+  {prefix}_modular_adder #(
     .op(0)) ma_inst_0 (X_shift_out, mr_out, out_data_0);
 
-  modular_adder #(
+  {prefix}_modular_adder #(
     .op(1)) ma_inst_1 (X_shift_out, mr_out, out_data_1);
 
 endmodule
 
 """
-        with open(out_file + '.sv', 'a+') as fid:
+        with open(out_folder + prefix + '.sv', 'a+') as fid:
             fid.write(ntt_core_sv)

@@ -4,12 +4,14 @@ def dse(ntt_config):
     cycle_ns = 1 / ntt_config.freq_mhz * 1e3
     latency_cycles = ntt_config.latency * 1e3 // cycle_ns
 
+    adder_tree_depth = 3
+
     print('Latency target: %d cycles.' % latency_cycles)
 
     # EDIT EDIT EDIT
     # const
-    if ntt_config.io_width == 28:
-        special_core_latency = 7
+    if ntt_config.io_width <= 32:
+        special_core_latency = 4 + adder_tree_depth + 2
         general_core_latency = 12
         dsp_per_special_core = 4
         lut_per_special_core = 0
@@ -17,29 +19,20 @@ def dse(ntt_config):
         dsp_per_general_core = 10
         lut_per_general_core = 0
         ff_per_general_core = 0
-    elif ntt_config.io_width == 52:
-        special_core_latency = 13
-        general_core_latency = 26
-        dsp_per_special_core = 9
+    elif ntt_config.io_width <= 52:
+        special_core_latency = 6 + adder_tree_depth + 2
+        general_core_latency = 18
+        dsp_per_special_core = 6
         lut_per_special_core = 0
         ff_per_special_core = 0
-        dsp_per_general_core = 24
-        lut_per_general_core = 0
-        ff_per_general_core = 0
-    elif ntt_config.io_width == 62:
-        special_core_latency = 18
-        general_core_latency = 32
-        dsp_per_special_core = 12
-        lut_per_special_core = 0
-        ff_per_special_core = 0
-        dsp_per_general_core = 32
+        dsp_per_general_core = 16
         lut_per_general_core = 0
         ff_per_general_core = 0
     #######################################
 
     ntt_config.tp = len(ntt_config.moduli)
     print('setting tp to... ', ntt_config.tp)
-    if ntt_config.tp > 5:
+    if ntt_config.tp > 2:
         ntt_config.ntt_core_type = 'general'
     else:
         ntt_config.ntt_core_type = 'specialized'
@@ -52,6 +45,7 @@ def dse(ntt_config):
     bytes_coefficient = math.ceil(ntt_config.io_width / 8)
 
     for dp in [2, 4, 8, 16, 32, 64, 128]:
+    #for dp in [16]:
         print('\nexploring dp %d' %dp)
         # EDIT EDIT EDIT
         if ntt_config.io_width == 28:
@@ -73,11 +67,15 @@ def dse(ntt_config):
 
         tf_mem_size = ntt_config.N * bytes_coefficient * 8
         tf_brams = math.ceil(tf_mem_size / 32000)
-        spn_brams = math.ceil(ntt_config.N * bytes_coefficient * 8 / dp / 32000) * dp
+        spn_brams = 0.5 * math.ceil(2.0 * ntt_config.N * ntt_config.io_width / dp / 32000) * dp
 
         max_pp_bram = 0
         for pp in range(1, ntt_config.ntt_stages+1):
-            tf = math.ceil(ntt_config.N * bytes_coefficient * 8 / pp / 32000) * pp * ntt_config.tp
+        #for pp in range(4, 5):
+            #tf = math.ceil(ntt_config.N * bytes_coefficient * 8 / pp / 32000) * pp * ntt_config.tp
+            tf_per_core = math.ceil(ntt_config.ntt_stages  / pp) * (ntt_config.N / dp)
+            bram_per_core = 0.5 * math.ceil(2.0 * tf_per_core * ntt_config.io_width / 32000)
+            tf = bram_per_core * dp // 2 * pp * ntt_config.tp
             spn = spn_brams * pp * ntt_config.tp
             print('pp', pp, 'tf brams', tf, 'spn brams', spn)
             bram_needed = tf + spn
@@ -103,12 +101,12 @@ def dse(ntt_config):
                 spn_lat[2**i] = 2**i // dp + spn_lrb
             else:
                 spn_lat[2**i] = spn_lrb
-        #print(spn_lat)
+        print(spn_lat)
 
         passes_lat = []
         for i in range(0, num_passes):
             lat = 0
-            for j in range(0, pp):
+            for j in range(0, int(pp)):
                 stride = ntt_config.N // 2 // 2**(i * pp + j)
                 if stride > 0:
                     lat += spn_lat[stride] + core_lat
