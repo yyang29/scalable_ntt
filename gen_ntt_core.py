@@ -13,7 +13,7 @@ def gen_ntt_core(ntt_core_type, ntt_config, d_idx, tp_idx):
 
     io_width = ntt_config.io_width
 
-    num_tf_per_core = ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx]
+    num_tf_per_core = int(ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx])
 
     moduli_config = [[
         [28, 37, 2, 0, 0, 0, 1],        # sign: 1 - negative
@@ -68,9 +68,9 @@ def gen_ntt_core(ntt_core_type, ntt_config, d_idx, tp_idx):
         nodes_curr_level = nodes_prev_level // 2 + nodes_prev_level % 2
         for j in range(0, nodes_curr_level):
             if i == 0:
-                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (op_{j*2}_signed, op_{j*2+1}_signed, sum_wire_l{i}_{j});\n'
+                adder_tree_construct += f'  {prefix}_modular_adder ma_instance_{i}_{j} (op_{j*2}_signed, op_{j*2+1}_signed, sum_wire_l{i}_{j});\n'
             else:
-                adder_tree_construct += f'  modular_adder ma_instance_{i}_{j} (sum_reg_l{i-1}_{j*2}, sum_reg_l{i-1}_{j*2+1}, sum_wire_l{i}_{j});\n'
+                adder_tree_construct += f'  {prefix}_modular_adder ma_instance_{i}_{j} (sum_reg_l{i-1}_{j*2}, sum_reg_l{i-1}_{j*2+1}, sum_wire_l{i}_{j});\n'
             if i == adder_tree_levels - 1:
                 assert j == 0
                 adder_tree_construct += f'  assign out_data = sum_reg_l{i}_{j};\n'
@@ -157,7 +157,7 @@ module {prefix}_modular_adder #(
 endmodule
 """
 
-    if ntt_core_type == 'special_purpose':
+    if ntt_core_type == 'specialized':
         ntt_core_sv = f"""// This verilog file is generated automatically.
 // Resource efficient NTT core optimized for solinas primes.
 // Author: Yang Yang (yyang172@usc.edu)
@@ -196,7 +196,7 @@ module {prefix}_modular_reduction (
   end
 endmodule
 
-
+(* use_dsp = "yes" *)
 module {prefix} (
     in_data_valid,
     in_data_0,
@@ -245,7 +245,7 @@ module {prefix} (
 endmodule
 
 """
-        with open(out_folder + '.sv', 'a+') as fid:
+        with open(out_folder + prefix + '.sv', 'a+') as fid:
             fid.write(ntt_core_sv)
 
     else:
@@ -256,7 +256,7 @@ endmodule
 
 {ma_sv}
 
-
+(* use_dsp = "yes" *)
 module {prefix} (
     in_data_valid,
     in_data_0,
@@ -271,7 +271,7 @@ module {prefix} (
   );
 
   localparam L = {io_width} + 1;
-  localparam T = {(1 << (io_width + 1)) // modulus};
+  localparam T = {modulus << 1};
 
   input clk, rst;
   input         in_data_valid;

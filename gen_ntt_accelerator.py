@@ -14,7 +14,7 @@ def gen_tp_top(ntt_config, d_idx, tp_idx):
     out_folder = ntt_config.out_folder + '/design_' + str(d_idx)
     out_file = out_folder + '/task_' + str(tp_idx) + '.sv'
 
-    num_tf_per_core = ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx]
+    num_tf_per_core = int(ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx])
 
     io_width = ntt_config.io_width
     dp = ntt_config.dp[d_idx]
@@ -22,17 +22,17 @@ def gen_tp_top(ntt_config, d_idx, tp_idx):
 
     wire_declars = '\n'
     wire_declars += f'  logic sp_out_start[{pp}-1:0];\n'
-    for i in range(1, pp):
+    for i in range(1, int(pp)):
         wire_declars += f'  logic [DATA_WIDTH-1:0] sp_{i-1}_out[DP-1:0];\n'
 
-    for i in range(0, pp):
+    for i in range(0, int(pp)):
         wire_declars += f'  logic [DATA_WIDTH-1:0] sp_{i}_tw_rd_data[DP_2-1:0];\n'
         wire_declars += f'  logic [{num_tf_per_core.bit_length() - 2}:0] sp_{i}_tw_rd_addr[DP_2-1:0];\n'
         wire_declars += f'  logic sp_{i}_tw_rd_valid[DP_2-1:0];\n'
 
     sp_insts = '\n'
     if pp > 1:
-        for i in range(0, pp):
+        for i in range(0, int(pp)):
             if i == 0:
                 sp_insts += f'  super_pipe_{tp_idx}_0 sp_inst_0 (\n'
                 sp_insts += f'    .clk(clk),\n'
@@ -79,7 +79,7 @@ def gen_tp_top(ntt_config, d_idx, tp_idx):
         sp_insts += f'    .twiddle_rd_data(sp_0_tw_rd_data));\n'
 
     tw_stmt = '\n'
-    for i in range(0, pp):
+    for i in range(0, int(pp)):
         tw_stmt += f'      if (pp_counter == {i}) begin\n'
         tw_stmt += f'        sp_{i}_tw_rd_data[tw_counter] <= twiddle_rd_data;\n'
         tw_stmt += f'        twiddle_rd_addr_valid <= sp_{i}_tw_rd_valid[tw_counter];\n'
@@ -165,7 +165,7 @@ def gen_ntt_super_pipeline(ntt_config, d_idx, tp_idx, pp_idx):
     out_folder = ntt_config.out_folder + '/design_' + str(d_idx)
     out_file = out_folder + '/super_pipe_' + str(tp_idx) + '_' + str(pp_idx) + '.sv'
 
-    num_tf_per_core = ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx]
+    num_tf_per_core = int(ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx])
 
     io_width = ntt_config.io_width
     dp = ntt_config.dp[d_idx]
@@ -245,7 +245,7 @@ def gen_ntt_top(ntt_config, d_idx):
     """Generate NTT top."""
     out_folder = ntt_config.out_folder + '/design_' + str(d_idx)
 
-    num_tf_per_core = ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx]
+    num_tf_per_core = int(ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx])
 
     io_width = ntt_config.io_width
     dp = ntt_config.dp[d_idx]
@@ -423,16 +423,16 @@ def main():
         gen_ntt_spn.gen_common_modules(ntt_config, i)
 
         for j in range(ntt_config.tp):
-            gen_ntt_core.gen_ntt_core('general_purpose', ntt_config, i, j)
+            gen_ntt_core.gen_ntt_core(ntt_config.ntt_core_type, ntt_config, i, j)
             N = ntt_config.N
             pp = ntt_config.pp[i]
             stride = []
             while N > 1:
                 N = N // 2
                 stride.append(N)
-            for k in range(pp):
+            for k in range(int(pp)):
                 my_stride = []
-                for offset in range(k, ntt_config.ntt_stages, pp):
+                for offset in range(k, ntt_config.ntt_stages, int(pp)):
                     my_stride.append(stride[offset])
                 gen_ntt_spn.gen_spn(ntt_config, i, j, k, my_stride)
                 gen_ntt_super_pipeline(ntt_config, i, j, k)
