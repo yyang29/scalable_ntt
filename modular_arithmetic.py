@@ -198,8 +198,8 @@ def plot():
     ax = sns.scatterplot(x='bit width', y='mod add/sub', hue='prime', size='prime',
                          sizes=(40, 300), data=df1, palette=sns.color_palette(palette='ch:2,r=.2,l=.6', n_colors=7, as_cmap=True))
     plt.ylim(0, 10.5)
-    ax.set_xlabel('bit width', fontsize=14)
-    ax.set_ylabel('adder tree num of operands', fontsize=14)
+    ax.set_xlabel('prime size (bits)', fontsize=14)
+    ax.set_ylabel('total num of operands for reduction', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=14)
 
     ax.legend(title='num of\nprimes', bbox_to_anchor=(

@@ -354,10 +354,8 @@ class NttGenConfig:
         self.latency = latency
         self.out_folder = out_folder
         # input constraints
-        self.limit_lut = 1182240
-        self.limit_bram = 2160 * 0.2
-        self.limit_ff = 2364480
-        self.limit_dsp = 6840 * 0.2
+        self.limit_bram = 2160 * 0.5
+        self.limit_dsp = 6840 * 0.05
         self.bw_gbps = 70
         self.freq_mhz = 250
         # DSE output
