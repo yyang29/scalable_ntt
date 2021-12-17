@@ -354,9 +354,9 @@ class NttGenConfig:
         self.latency = latency
         self.out_folder = out_folder
         # input constraints
-        self.limit_bram = 2160 * 0.5
-        self.limit_dsp = 6840 * 0.05
-        self.bw_gbps = 70
+        self.limit_bram = 2160
+        self.limit_dsp = 6840
+        self.bw_gbps = 78
         self.freq_mhz = 250
         # DSE output
         self.ntt_core_type = None
@@ -393,6 +393,8 @@ def main():
                         help='Input and output bitwidth.')
     parser.add_argument('-o', '--output-folder', type=str, default='ntt.sv',
                         help='Output verilog file directory.')
+    parser.add_argument('-c', '--ntt-core', type=str, default='general',
+                        help='NTT Core type (general|specialized).')
     parser.add_argument('-l', '--latency', type=float, default=1.5,
                         help='Latency in us.')
 
@@ -404,7 +406,7 @@ def main():
     ntt_config = NttGenConfig(args.N, args.moduli, args.io_width, args.latency,
                               args.output_folder)
 
-    ntt_config = dse.dse(ntt_config)
+    ntt_config = dse.dse(ntt_config, args.ntt_core)
 
     valid_designs = len(ntt_config.dp)
 

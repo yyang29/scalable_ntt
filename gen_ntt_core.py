@@ -13,10 +13,12 @@ def gen_ntt_core(ntt_core_type, ntt_config, d_idx, tp_idx):
 
     io_width = ntt_config.io_width
 
-    gen_pipelined_mult(out_folder+'pipelined_mult.sv', io_width, prefix);
-    gen_pipelined_mult(out_folder+'pipelined_mult_lowerhalf.sv', io_width, prefix, True);
+    gen_pipelined_mult(out_folder+'pipelined_mult.sv', io_width, prefix)
+    gen_pipelined_mult(
+        out_folder+'pipelined_mult_lowerhalf.sv', io_width, prefix, True)
 
-    num_tf_per_core = int(ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx])
+    num_tf_per_core = int(
+        ntt_config.N // ntt_config.pp[d_idx] // ntt_config.dp[d_idx])
 
     moduli_config = [[
         [28, 37, 2, 0, 0, 0, 1],        # sign: 1 - negative
@@ -388,6 +390,7 @@ endmodule
 """
         with open(out_folder + prefix + '.sv', 'a+') as fid:
             fid.write(ntt_core_sv)
+
 
 def gen_pipelined_mult(filename, bitwidth, prefix, lower_half=False):
 
